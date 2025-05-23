@@ -5,8 +5,8 @@ from rag.memory import Memory
 from rag.vector_store import VectorStore
 from datetime import datetime
 
-# Initialize OpenAI client
-client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY', ''))
+# Initialize OpenAI API key
+openai.api_key = os.getenv('OPENAI_API_KEY', '')
 
 class Chatbot:
     def __init__(self, vector_store):
@@ -16,22 +16,54 @@ class Chatbot:
 
     def find_data_by_date(self, data, target_date):
         """Find data entries matching a specific date."""
-        target_date = target_date.split('T')[0]  # Get just the date part
-        return [item for item in data if item.get('timestamp', '').startswith(target_date)]
+        if not data:
+            return []
+            
+        # Handle different data types
+        filtered_data = []
+        for item in data:
+            # Skip items without timestamp if we're looking for date-specific data
+            if target_date and 'timestamp' not in item:
+                continue
+                
+            # For date-specific queries
+            if target_date and 'timestamp' in item:
+                item_date = item['timestamp'].split('T')[0]
+                if item_date == target_date:
+                    filtered_data.append(item)
+            # For non-date specific queries (like preferences)
+            elif not target_date:
+                filtered_data.append(item)
+                
+        return filtered_data
 
     def extract_date_from_query(self, query):
-        """Extract date from query and return in YYYY-MM-DD format."""
         query = query.lower()
-        if "january 1st" in query or "jan 1" in query:
-            return "2023-01-01"
-        elif "january 2nd" in query or "jan 2" in query:
-            return "2023-01-02"
-        elif "january 3rd" in query or "jan 3" in query:
-            return "2023-01-03"
+        date_mapping = {
+            "january 1st": "2023-01-01",
+            "jan 1": "2023-01-01",
+            "january 2nd": "2023-01-02",
+            "jan 2": "2023-01-02",
+            "january 3rd": "2023-01-03",
+            "jan 3": "2023-01-03",
+            "january 4th": "2023-01-04",
+            "jan 4": "2023-01-04",
+            "january 5th": "2023-01-05",
+            "jan 5": "2023-01-05",
+            "january 6th": "2023-01-06",
+            "jan 6": "2023-01-06",
+            "january 7th": "2023-01-07",
+            "jan 7": "2023-01-07",
+            "january 8th": "2023-01-08",
+            "jan 8": "2023-01-08"
+        }
+        
+        for date_text, date_value in date_mapping.items():
+            if date_text in query:
+                return date_value
         return None
 
     def generate_suggestions(self, query, retrieved_data):
-        """Generate proactive suggestions based on the current context."""
         suggestions = []
         
         # Extract date from query
@@ -46,17 +78,17 @@ class Chatbot:
         # Generate suggestions based on available data
         for item in date_data:
             if "steps" in item and "steps" not in query.lower():
-                suggestions.append(f"Would you like to know how many steps you took on {item['timestamp']}?")
-            
+                ts = item.get('timestamp', item.get('date', 'an unknown date'))
+                suggestions.append(f"Would you like to know how many steps you took on {ts}?")
             if "heart_rate" in item and "heart rate" not in query.lower():
-                suggestions.append(f"Would you like to know your heart rate on {item['timestamp']}?")
-            
+                ts = item.get('timestamp', item.get('date', 'an unknown date'))
+                suggestions.append(f"Would you like to know your heart rate on {ts}?")
             if "place" in item and "location" not in query.lower() and "where" not in query.lower():
-                suggestions.append(f"Would you like to know where you were on {item['timestamp']}?")
-            
+                ts = item.get('timestamp', item.get('date', 'an unknown date'))
+                suggestions.append(f"Would you like to know where you were on {ts}?")
             if "preferences" in item and "preferences" not in query.lower():
-                suggestions.append(f"Would you like to know about {item['name']}'s preferences?")
-            
+                name = item.get('name', 'the user')
+                suggestions.append(f"Would you like to know about {name}'s preferences?")
             if "category" in item and item["category"] == "movies" and "movie" not in query.lower():
                 suggestions.append(f"Would you like to know about your movie ratings?")
 
@@ -85,27 +117,57 @@ class Chatbot:
         if "steps" in query:
             for item in retrieved_data:
                 if "steps" in item:
-                    return f"Based on the data, you took {item['steps']} steps on {item['timestamp']}."
-        
+                    ts = item.get('timestamp', item.get('date'))
+                    if not ts:
+                        ts = target_date if 'target_date' in locals() and target_date else None
+                    if ts:
+                        return f"Based on the data, you took {item['steps']} steps on {ts}."
+                    else:
+                        return f"Based on the data, you took {item['steps']} steps."
+
         if "heart rate" in query:
             for item in retrieved_data:
                 if "heart_rate" in item:
-                    return f"Your heart rate was {item['heart_rate']} on {item['timestamp']}."
-        
+                    ts = item.get('timestamp', item.get('date'))
+                    if not ts:
+                        ts = target_date if 'target_date' in locals() and target_date else None
+                    if ts:
+                        return f"Your heart rate was {item['heart_rate']} on {ts}."
+                    else:
+                        return f"Your heart rate was {item['heart_rate']}."
+
         if "location" in query or "where" in query:
             for item in retrieved_data:
                 if "place" in item:
-                    return f"You were in {item['place']} on {item['timestamp']}."
+                    ts = item.get('timestamp', item.get('date'))
+                    if not ts:
+                        ts = target_date if 'target_date' in locals() and target_date else None
+                    if ts:
+                        return f"You were in {item['place']} on {ts}."
+                    else:
+                        return f"You were in {item['place']}."
         
         if "preferences" in query:
             for item in retrieved_data:
-                if "preferences" in item:
-                    return f"User preferences include: {', '.join(item['preferences'])}."
+                if "preferences" in item and "name" in item:
+                    return f"{item['name']}'s preferences include: {', '.join(item['preferences'])}."
         
         if "movie" in query:
             for item in retrieved_data:
                 if "category" in item and item["category"] == "movies":
                     return f"You have rated {item['item']} with a rating of {item['rating']}."
+        
+        # Handle age and weight queries
+        if "age" in query or "weight" in query:
+            for item in retrieved_data:
+                age = item.get("age")
+                weight = item.get("weight")
+                if age is not None and weight is not None:
+                    return f"Your age is {age} and your weight is {weight}."
+                elif age is not None:
+                    return f"Your age is {age}."
+                elif weight is not None:
+                    return f"Your weight is {weight}."
         
         # Generic response if no specific data is found
         return f"I found some data related to your query: {retrieved_data}. However, I'm currently operating in a limited mode. Please try asking about specific data points like steps, heart rate, or location."
@@ -122,17 +184,21 @@ class Chatbot:
                 if not retrieved_data:
                     return f"I couldn't find any data for {target_date}. Please try a different date."
             
-            # Get memory context
+            # Try to answer directly from data (fallback logic)
+            direct_answer = self.generate_fallback_response(query, retrieved_data)
+            # If fallback logic gives a specific answer (not the generic fallback), use it
+            if not direct_answer.startswith("I found some data related to your query:"):
+                # Add suggestions if available
+                suggestions = self.generate_suggestions(query, retrieved_data)
+                if suggestions:
+                    direct_answer += "\n\nProactive Suggestions:\n" + "\n".join(suggestions)
+                self.memory.add_interaction(query, direct_answer)
+                return direct_answer
+
+            # If no direct answer, use OpenAI
             memory_context = self.memory.get_history()
-            
-            # Prepare context
-            if retrieved_data:
-                context = f"Retrieved Data: {retrieved_data}\nMemory Context: {memory_context}"
-            else:
-                context = f"No specific data found. Memory Context: {memory_context}"
-            
+            context = f"Retrieved Data: {retrieved_data}\nMemory Context: {memory_context}" if retrieved_data else f"No specific data found. Memory Context: {memory_context}"
             try:
-                # Generate response using OpenAI
                 response = openai.ChatCompletion.create(
                     model="gpt-3.5-turbo",
                     messages=[
@@ -141,37 +207,27 @@ class Chatbot:
                     ],
                     max_tokens=150
                 )
-                
-                # Extract the response text
                 response_text = response.choices[0].message.content.strip()
-                
             except Exception as api_error:
-                # If API call fails, use fallback response
-                response_text = self.generate_fallback_response(query, retrieved_data)
-            
-            # If no response, provide a default response
-            if not response_text:
-                response_text = "I'm sorry, I couldn't generate a specific response. Could you please rephrase your question?"
-            
-            # Generate proactive suggestions
+                response_text = direct_answer  # fallback already generic
+
+            # Add suggestions if available
             suggestions = self.generate_suggestions(query, retrieved_data)
             if suggestions:
                 response_text += "\n\nProactive Suggestions:\n" + "\n".join(suggestions)
-            
-            # Update memory
             self.memory.add_interaction(query, response_text)
             return response_text
-            
+
         except Exception as e:
             error_response = f"I encountered an error: {str(e)}. Please try again."
             self.memory.add_interaction(query, error_response)
             return error_response
 
 if __name__ == '__main__':
-    # Example usage
+
     vector_store = VectorStore()
-    # Assume vector_store is already populated
+
     chatbot = Chatbot(vector_store)
     query = "What's the weather like?"
     response = chatbot.generate_response(query)
-    print(f'Query: {query}\nResponse: {response}') 
+    print(f'Query: {query}\nResponse: {response}')
